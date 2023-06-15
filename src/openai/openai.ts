@@ -4,6 +4,16 @@ import { Configuration, CreateChatCompletionRequest, OpenAIApi } from 'openai';
 import { escapeComment } from './utils';
 import { debug } from '../github/utils';
 
+// The LLM properties
+export const LLM_PROPERTIES = {
+  model: 'gpt-4', // The LLM model to use
+  temperature: 0.8, // The temperature parameter for controlling randomness of generated output
+  maxTokens: 8192, // The maximum number of tokens supported by the model
+};
+
+// 1 token =~ 4 characters https://help.openai.com/en/articles/4936856-what-are-tokens-and-how-to-count-them
+export const LLM_MAX_CHARS = LLM_PROPERTIES.maxTokens * 4;
+
 /**
  * Creates a chat completion using the OpenAI API.
  * @param openai_key
@@ -12,7 +22,7 @@ import { debug } from '../github/utils';
  */
 export async function generateCompletion(
   openai_key: string,
-  request: Omit<CreateChatCompletionRequest, 'model' | 'n' | 'stream'>,
+  request: Omit<CreateChatCompletionRequest, 'n' | 'stream'>,
 ): Promise<string> {
   const openAi = new OpenAIApi(
     new Configuration({
@@ -22,8 +32,7 @@ export async function generateCompletion(
 
   try {
     const completion = await openAi.createChatCompletion({
-      model: 'gpt-3.5-turbo',
-      temperature: 0.8,
+      temperature: LLM_PROPERTIES.temperature,
       ...request,
       n: 1,
       stream: false,

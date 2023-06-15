@@ -68,6 +68,7 @@ typings/
 # dotenv environment variables file
 .env
 .env.test
+.secrets
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache
@@ -97,3 +98,7 @@ Thumbs.db
 # Ignore built ts files
 __tests__/runner/*
 lib/**/*
+
+#Sonar
+.scannerwork
+sonar-project.properties

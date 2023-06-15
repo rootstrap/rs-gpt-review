@@ -1,4 +1,4 @@
-import { initAssistant, initIssue, initPullRequest, initComments } from '../prompts';
+import { initAssistant, initIssue, initPullRequest, initComments, initReviewComment } from '../prompts';
 
 describe('initAssistant', () => {
   test('returns a chat completion request message', () => {
@@ -148,6 +148,32 @@ describe('initComments', () => {
         {
           "content": "@assistant This is a reply to you.",
           "name": "janedoe",
+          "role": "user",
+        },
+      ]
+    `);
+  });
+});
+
+describe('initReviewComment', () => {
+  test('returns chat completion request messages for review comment', () => {
+    const diff_hunk = '@@ -1,3 +1,4 @@\n+line4\n line1\n line2\n line3';
+    const review_comment = 'This is a comment';
+    expect(initReviewComment(diff_hunk, review_comment)).toMatchInlineSnapshot(`
+      [
+        {
+          "content": "The diff hunk where the comment was made:
+      \`\`\`
+      @@ -1,3 +1,4 @@
+      +line4
+       line1
+       line2
+       line3
+      \`\`\`",
+          "role": "system",
+        },
+        {
+          "content": "This is a comment",
           "role": "user",
         },
       ]

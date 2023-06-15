@@ -39,7 +39,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.addComment = exports.listCommentsBefore = exports.listComments = exports.getIssue = void 0;
+exports.addReviewCommentReply = exports.addComment = exports.listCommentsBefore = exports.listComments = exports.getIssue = void 0;
 const github = __importStar(__nccwpck_require__(5438));
 /**
  * Returns an issue or pull request for the given issue number.
@@ -102,6 +102,27 @@ const addComment = (github_token, issue_number, body) => __awaiter(void 0, void 
     return comment.data;
 });
 exports.addComment = addComment;
+/**
+ * Adds a reply to a pull request review comment to the given pull request and review comment ID.
+ * @param github_token
+ * @param pull_number
+ * @param body
+ * @param review_id
+ * @returns
+ */
+const addReviewCommentReply = (github_token, pull_number, body, review_id) => __awaiter(void 0, void 0, void 0, function* () {
+    const { owner, repo } = github.context.repo;
+    const octokit = github.getOctokit(github_token);
+    const comment = yield octokit.rest.pulls.createReviewComment({
+        owner,
+        repo,
+        pull_number,
+        body,
+        in_reply_to: review_id,
+    });
+    return comment.data;
+});
+exports.addReviewCommentReply = addReviewCommentReply;
 
 
 /***/ }),
@@ -211,9 +232,28 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.debug = exports.writeSummary = exports.getIssueNumber = exports.getEventTrigger = exports.isPullRequestCommentEvent = exports.isIssueCommentEvent = exports.isPullRequestEvent = exports.isIssueEvent = void 0;
+exports.truncateComments = exports.removeOccurrence = exports.debug = exports.writeSummary = exports.getIssueNumber = exports.getEventTrigger = exports.isPullRequestReviewCommentEvent = exports.isPullRequestCommentEvent = exports.isIssueCommentEvent = exports.isPullRequestEvent = exports.isIssueEvent = exports.readRepoFile = void 0;
 const core = __importStar(__nccwpck_require__(2186));
 const github = __importStar(__nccwpck_require__(5438));
+/**
+ * Reads the content of a file from a GitHub repository.
+ * @param {string} github_token - The GitHub authentication token.
+ * @param {string} fileName - The name of the file to be read.
+ * @returns {Promise<string>} - A promise that resolves to the content of the file.
+ */
+function readRepoFile(github_token, fileName) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const octokit = github.getOctokit(github_token);
+        const { owner, repo } = github.context.repo;
+        const fileBuffer = (yield octokit.rest.repos.getContent({
+            owner,
+            repo,
+            path: fileName,
+        }));
+        return Buffer.from(fileBuffer.data.content, 'base64').toString();
+    });
+}
+exports.readRepoFile = readRepoFile;
 /**
  * Returns true if the event originated from an issue event.
  * @see https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows#issues
@@ -259,6 +299,17 @@ const isPullRequestCommentEvent = (context) => {
 };
 exports.isPullRequestCommentEvent = isPullRequestCommentEvent;
 /**
+ * Returns true if the event originated from a pull request review comment.
+ * @see https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows#pull_request_review_comment
+ * @see https://docs.github.com/en/developers/webhooks-and-events/webhook-events-and-payloads#pull_request_review_comment
+ * @param context
+ * @returns
+ */
+const isPullRequestReviewCommentEvent = (context) => {
+    return context.eventName === 'pull_request_review_comment' && context.payload.comment !== undefined;
+};
+exports.isPullRequestReviewCommentEvent = isPullRequestReviewCommentEvent;
+/**
  * Returns the object that triggered the event.
  * If it's an issue event, returns the issue.
  * If it's a pull request event, returns the pull request.
@@ -277,6 +328,10 @@ const getEventTrigger = (context) => {
         return payload.pull_request;
     }
     if ((0, exports.isIssueCommentEvent)(context) || (0, exports.isPullRequestCommentEvent)(context)) {
+        const payload = context.payload;
+        return payload.comment;
+    }
+    if ((0, exports.isPullRequestReviewCommentEvent)(context)) {
         const payload = context.payload;
         return payload.comment;
     }
@@ -309,7 +364,7 @@ exports.getIssueNumber = getIssueNumber;
  * Writes a summary of the request and response to the job log.
  * @see https://github.blog/2022-05-09-supercharging-github-actions-with-job-summaries/
  */
-const writeSummary = (issue, request, response) => __awaiter(void 0, void 0, void 0, function* () {
+const writeSummary = (issue, request, response, prompt) => __awaiter(void 0, void 0, void 0, function* () {
     var _a, _b;
     yield core.summary
         .addLink('Issue', issue.html_url)
@@ -324,6 +379,9 @@ const writeSummary = (issue, request, response) => __awaiter(void 0, void 0, voi
         .addBreak()
         .addHeading('GitHub Context', 3)
         .addCodeBlock(JSON.stringify(github.context.payload, null, 2), 'json')
+        .addBreak()
+        .addHeading('Prompt', 3)
+        .addCodeBlock(JSON.stringify(prompt, null, 2), 'json')
         .write();
 });
 exports.writeSummary = writeSummary;
@@ -338,6 +396,140 @@ const debug = (message, obj) => {
         core.debug(JSON.stringify(obj, null, 2));
 };
 exports.debug = debug;
+/**
+ * Remove ocurrence of a string based on a regex
+ * @param str
+ * @param reg
+ * @param fileNames
+ */
+const removeOccurrence = (str, reg, fileNames) => {
+    for (const f of fileNames) {
+        const exp = `${reg.replace('**FILE_NAME**', f)}`;
+        str = str.replace(new RegExp(exp, 'gsm'), '');
+    }
+    return str;
+};
+exports.removeOccurrence = removeOccurrence;
+const truncateComments = (comments, currentPromptLength, limit) => {
+    let totalChars = currentPromptLength;
+    const truncatedComments = [];
+    // Iterate over comments in reverse order
+    for (let i = comments.length - 1; i >= 0; i--) {
+        const comment = comments[i];
+        const commentChars = comment.body.length;
+        // Check if adding the current comment exceeds the threshold limit
+        if (totalChars + commentChars <= limit) {
+            truncatedComments.unshift(comment); // Add comment to the beginning of the array
+            totalChars += commentChars;
+        }
+        else {
+            break; // Stop iterating if adding the comment would exceed the limit
+        }
+    }
+    return truncatedComments;
+};
+exports.truncateComments = truncateComments;
+
+
+/***/ }),
+
+/***/ 5008:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.processCommands = exports.buildPromptsListMessage = exports.buildHelpMessage = exports.DEFAULT_PROMPTS = void 0;
+const CODE_MARKDOWN = '```';
+exports.DEFAULT_PROMPTS = [
+    'Explain the purpose of this pull-request',
+    'Find code enhancement opportunities',
+    'Write any missing unit tests',
+    'Check the code for SOLID and best practices',
+    'Check any security issues with the OWASP Top 10, find any potential security risks',
+    'Document the code for this pull-request',
+    'Make a code review, with focus on mantainability',
+    'Make a code review, with focus on performance',
+    'Make a code review, with focus on security',
+];
+function buildHelpMessage() {
+    const helpResponse = '**Available commands (--help):**' +
+        '<br>' +
+        `${CODE_MARKDOWN}` +
+        '1. --help, list all commands' +
+        `${CODE_MARKDOWN}` +
+        '<br>' +
+        `${CODE_MARKDOWN}` +
+        '2. --model, --model string, set the model to use (e.g. --model gpt-4) ' +
+        `${CODE_MARKDOWN}` +
+        '<br>' +
+        `${CODE_MARKDOWN}` +
+        '3. --prompts, list of useful prompts' +
+        `${CODE_MARKDOWN}` +
+        '<br>' +
+        `${CODE_MARKDOWN}` +
+        '4. --prompt, --prompt integer, set the prompt to use, (e.g. --prompt 1)' +
+        `${CODE_MARKDOWN}` +
+        '<br>' +
+        `${CODE_MARKDOWN}` +
+        '5. --exclude, --exclude comma-separated file names, exclude files form diff (e.g. --exclude file1,file2) ' +
+        `${CODE_MARKDOWN}` +
+        '<br>' +
+        `${CODE_MARKDOWN}` +
+        '6. --include, --include comma-separated file names, include repository files to the prompt (e.g. --include src/main.ts,src/helper.ts) ' +
+        `${CODE_MARKDOWN}` +
+        '<br>';
+    return helpResponse;
+}
+exports.buildHelpMessage = buildHelpMessage;
+function buildPromptsListMessage() {
+    return exports.DEFAULT_PROMPTS.map((v, i) => {
+        return `<br>${CODE_MARKDOWN} ${i + 1}. ${v}${CODE_MARKDOWN}`;
+    }).join(' ');
+}
+exports.buildPromptsListMessage = buildPromptsListMessage;
+/**
+ * Processes a given command string and determines the relevant command and its value.
+ * @param {string} body - The command string to be processed.
+ * @param {string[]} AVAILABLE_COMMANDS - An array of available commands to check against.
+ * @returns {Command[]} An array containing the matched commands list and its value (if any).
+ */
+const processCommands = (body, AVAILABLE_COMMANDS) => {
+    const result = [];
+    const commands = AVAILABLE_COMMANDS.filter((v) => {
+        return body === null || body === void 0 ? void 0 : body.includes(v);
+    });
+    // eslint-disable-next-line @typescript-eslint/prefer-for-of
+    for (let index = 0; index < commands.length; index++) {
+        const command = commands[index];
+        if (command === '--help' || command === '--prompts') {
+            result.push({ command, value: null });
+        }
+        else if (command === '--model') {
+            const value = body.split(`${command} `)[1].split(' ')[0];
+            result.push({ command, value });
+        }
+        else if (command === '--prompt') {
+            if (body.includes(`${command} `)) {
+                const value = body.split(`${command} `)[1].split(' ')[0];
+                result.push({ command, value });
+            }
+        }
+        else if (command === '--exclude') {
+            const value = body.split(`${command} `)[1].split(' ')[0];
+            result.push({ command, value });
+        }
+        else if (command === '--include') {
+            const value = body.split(`${command} `)[1].split(' ')[0];
+            result.push({ command, value });
+        }
+        else {
+            throw new Error(`Could not determine the command in "${body}"`);
+        }
+    }
+    return result;
+};
+exports.processCommands = processCommands;
 
 
 /***/ }),
@@ -388,12 +580,28 @@ const pulls_1 = __nccwpck_require__(8808);
 const utils_1 = __nccwpck_require__(1520);
 const openai_1 = __nccwpck_require__(1933);
 const prompts_1 = __nccwpck_require__(304);
+const utils_2 = __nccwpck_require__(8483);
+const helpers_1 = __nccwpck_require__(5008);
 /**
  * The name and handle of the assistant.
  */
-const ASSISTANT_NAME = 'AdaGPT';
-const ASSISTANT_HANDLE = '@AdaGPT';
-const ASSISTANT_REGEX = /@adagpt/i;
+const ASSISTANT_NAME = 'rs-gpt-review';
+const ASSISTANT_HANDLE = '@rs-gpt-review';
+const ASSISTANT_REGEX = /@rs-gpt-review/i;
+const GIT_FLAG = '--git ';
+const GARBAGE_REGEX = `(?:diff ${GIT_FLAG}\\S***FILE_NAME**).*?(?=diff ${GIT_FLAG}|(?=\n?$(?!\n)))`;
+const GARBAGE_FILES = [
+    'yarn.lock',
+    'package-lock.json',
+    '.env.EXAMPLE',
+    'Gemfile.lock',
+    'Podfile.lock',
+    'Package.resolved',
+    'dist/',
+];
+const INCLUDE_FILES = [];
+const AVAILABLE_COMMANDS = ['--help', '--model', '--prompts', '--prompt', '--exclude', '--include'];
+const PARAMS = { model: openai_1.LLM_PROPERTIES.model };
 /**
  * Returns the inputs for the action.
  * @returns
@@ -404,13 +612,16 @@ const getInputs = () => ({
     openai_temperature: parseFloat(core.getInput('openai_temperature')),
     openai_top_p: parseFloat(core.getInput('openai_top_p')),
     openai_max_tokens: parseInt(core.getInput('openai_max_tokens')),
+    model: core.getInput('model'),
+    files_excluded: core.getInput('files_excluded'),
 });
 function run() {
+    var _a;
     return __awaiter(this, void 0, void 0, function* () {
         try {
             (0, utils_1.debug)('Context', { context: github.context });
             // get the event object that triggered the workflow
-            // this can be an issue, pull request, or comment
+            // this can be an issue, pull request, comment, or review comment
             const trigger = (0, utils_1.getEventTrigger)(github.context);
             (0, utils_1.debug)('Trigger', { trigger });
             // check if the event body contains the assistant handle, otherwise skip
@@ -421,18 +632,79 @@ function run() {
             // get the inputs for the action
             const inputs = getInputs();
             (0, utils_1.debug)('Inputs', { inputs });
+            // check if more there are files to exclude from the params
+            if (inputs.files_excluded !== '') {
+                const exludeFiles = ((_a = inputs.files_excluded) === null || _a === void 0 ? void 0 : _a.replace(' ', '').split(',')) || [];
+                GARBAGE_FILES.push(...exludeFiles);
+            }
+            // check if some command is being called by the user
+            if ((trigger === null || trigger === void 0 ? void 0 : trigger.body) && new RegExp(AVAILABLE_COMMANDS.join('|')).test(trigger.body)) {
+                const commands = (0, helpers_1.processCommands)(trigger.body, AVAILABLE_COMMANDS);
+                // Check the input command type
+                const interactiveCommands = commands.find((c) => {
+                    return c.command === '--help' || c.command === '--prompts';
+                });
+                if (interactiveCommands) {
+                    if (interactiveCommands.command === '--help') {
+                        const helpResponse = (0, helpers_1.buildHelpMessage)();
+                        yield (0, issues_1.addComment)(inputs.github_token, github.context.issue.number, helpResponse);
+                        return;
+                    }
+                    else if (interactiveCommands.command === '--prompts') {
+                        const promptList = (0, helpers_1.buildPromptsListMessage)();
+                        const promptsResponse = `**Available prompts (--prompts):** ${promptList}`;
+                        yield (0, issues_1.addComment)(inputs.github_token, github.context.issue.number, promptsResponse);
+                        return;
+                    }
+                }
+                else {
+                    // eslint-disable-next-line @typescript-eslint/prefer-for-of
+                    for (let index = 0; index < commands.length; index++) {
+                        const { command, value } = commands[index];
+                        if (command === '--model') {
+                            PARAMS.model = value ? value : openai_1.LLM_PROPERTIES.model;
+                        }
+                        if (command === '--prompt') {
+                            const promptIndex = Number(value) || 1;
+                            if (!(helpers_1.DEFAULT_PROMPTS === null || helpers_1.DEFAULT_PROMPTS === void 0 ? void 0 : helpers_1.DEFAULT_PROMPTS[promptIndex - 1])) {
+                                throw new Error(`Prompt not available`);
+                            }
+                            else {
+                                const defaultPrompt = helpers_1.DEFAULT_PROMPTS[promptIndex - 1];
+                                trigger.body = trigger.body.replace(`--prompt ${promptIndex}`, defaultPrompt);
+                                yield (0, issues_1.addComment)(inputs.github_token, github.context.issue.number, `${ASSISTANT_HANDLE} ${defaultPrompt}`);
+                            }
+                        }
+                        if (command === '--exclude') {
+                            const exludeFiles = (value === null || value === void 0 ? void 0 : value.replace(' ', '').split(',')) || [];
+                            GARBAGE_FILES.push(...exludeFiles);
+                        }
+                        if (command === '--include') {
+                            const includeFiles = (value === null || value === void 0 ? void 0 : value.replace(' ', '').split(',')) || [];
+                            for (const fileName of includeFiles) {
+                                const content = yield (0, utils_1.readRepoFile)(inputs.github_token, fileName);
+                                INCLUDE_FILES.push(content);
+                            }
+                        }
+                    }
+                }
+            }
             // read the issue or pull request from the GitHub API
             const issue = yield (0, issues_1.getIssue)(inputs.github_token, github.context.issue.number);
             (0, utils_1.debug)('Issue', { issue });
             // get the repository information
             const repo = github.context.repo;
             // initialize the prompt with the assistant name and handle
-            const prompt = [...(0, prompts_1.initAssistant)(ASSISTANT_NAME, ASSISTANT_HANDLE)];
+            let prompt = [...(0, prompts_1.initAssistant)(ASSISTANT_NAME, ASSISTANT_HANDLE)];
             // the prompt for issues and pull requests is only slightly different
             // but the diff might be very long and we may have to exlude it in the future
             if (issue.pull_request) {
                 // get the diff for the pull request
-                const diff = yield (0, pulls_1.getPullRequestDiff)(inputs.github_token, github.context.issue.number);
+                let diff = yield (0, pulls_1.getPullRequestDiff)(inputs.github_token, github.context.issue.number);
+                (0, utils_1.debug)('Diff before', { before: diff.length });
+                // clears the diff string removing garbage to reduce the token amount
+                diff = (0, utils_1.removeOccurrence)(diff, GARBAGE_REGEX, GARBAGE_FILES);
+                (0, utils_1.debug)('Diff after', { after: diff.length });
                 (0, utils_1.debug)('Diff', { diff });
                 // add pull request and diff to the prompt
                 prompt.push(...(0, prompts_1.initPullRequest)(repo, issue, diff));
@@ -447,24 +719,49 @@ function run() {
                 const { comment } = github.context.payload;
                 // get the comments before the current one that triggered the workflow
                 // the workflow execution may be delayed, so we need to make sure we don't get comments after the current one
-                const comments = yield (0, issues_1.listCommentsBefore)(inputs.github_token, github.context.issue.number, comment.id);
+                let comments = yield (0, issues_1.listCommentsBefore)(inputs.github_token, github.context.issue.number, comment.id);
+                // we don't want to exceed half the maxChars limit because the response length also counts
+                const limit = openai_1.LLM_MAX_CHARS / 2;
+                comments = (0, utils_1.truncateComments)(comments, prompt.length, limit);
                 // add the current comment to the end of the comments
                 prompt.push(...(0, prompts_1.initComments)([...comments, comment]));
+            }
+            // prompt for comments is the same for issues and pull requests
+            if (github.context.eventName === 'pull_request_review_comment') {
+                // get the comment that triggered the workflow and all comments before it
+                const { diff_hunk, body } = trigger;
+                // add the review comment with the diff hunk to the prompt
+                prompt.push(...(0, prompts_1.initReviewComment)(diff_hunk, body));
+            }
+            // Clear commands form the prompt
+            prompt = (0, utils_2.removeTextOccurrence)(prompt, AVAILABLE_COMMANDS);
+            // Add files provided by the user
+            if (INCLUDE_FILES.length > 0) {
+                prompt.push(...(0, prompts_1.initFileContent)(INCLUDE_FILES.toString()));
             }
             (0, utils_1.debug)('Prompt', { prompt });
             // TODO handle max tokens limit
             // generate the completion from the prompt
             const completion = yield (0, openai_1.generateCompletion)(inputs.openai_key, {
+                model: inputs.model ? inputs.model : PARAMS.model,
                 messages: prompt,
                 temperature: inputs.openai_temperature,
                 top_p: inputs.openai_top_p,
                 max_tokens: inputs.openai_max_tokens,
             });
-            // add the response as a comment to the issue or pull request
-            const response = yield (0, issues_1.addComment)(inputs.github_token, github.context.issue.number, completion);
+            let response;
+            if (github.context.eventName === 'pull_request_review_comment') {
+                // add the response as a reply to the review comment
+                const { id } = trigger;
+                response = yield (0, issues_1.addReviewCommentReply)(inputs.github_token, github.context.issue.number, completion, id);
+            }
+            else {
+                // add the response as a comment to the issue or pull request
+                response = yield (0, issues_1.addComment)(inputs.github_token, github.context.issue.number, completion);
+            }
             (0, utils_1.debug)('Response', { response });
             // write a summary of the trigger and response to the job log
-            (0, utils_1.writeSummary)(issue, trigger, response);
+            (0, utils_1.writeSummary)(issue, trigger, response, prompt);
         }
         catch (error) {
             if (error instanceof Error)
@@ -516,12 +813,20 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.generateCompletion = void 0;
+exports.generateCompletion = exports.LLM_MAX_CHARS = exports.LLM_PROPERTIES = void 0;
 const core = __importStar(__nccwpck_require__(2186));
 const axios_1 = __nccwpck_require__(8757);
 const openai_1 = __nccwpck_require__(9211);
 const utils_1 = __nccwpck_require__(8483);
 const utils_2 = __nccwpck_require__(1520);
+// The LLM properties
+exports.LLM_PROPERTIES = {
+    model: 'gpt-4',
+    temperature: 0.8,
+    maxTokens: 8192, // The maximum number of tokens supported by the model
+};
+// 1 token =~ 4 characters https://help.openai.com/en/articles/4936856-what-are-tokens-and-how-to-count-them
+exports.LLM_MAX_CHARS = exports.LLM_PROPERTIES.maxTokens * 4;
 /**
  * Creates a chat completion using the OpenAI API.
  * @param openai_key
@@ -535,7 +840,7 @@ function generateCompletion(openai_key, request) {
             apiKey: openai_key,
         }));
         try {
-            const completion = yield openAi.createChatCompletion(Object.assign(Object.assign({ model: 'gpt-3.5-turbo', temperature: 0.8 }, request), { n: 1, stream: false }));
+            const completion = yield openAi.createChatCompletion(Object.assign(Object.assign({ temperature: exports.LLM_PROPERTIES.temperature }, request), { n: 1, stream: false }));
             (0, utils_2.debug)('Completion', { completion: completion.data });
             if (!((_a = completion.data.choices[0].message) === null || _a === void 0 ? void 0 : _a.content) || completion.data.choices[0].finish_reason !== 'stop') {
                 // https://platform.openai.com/docs/guides/chat/response-format
@@ -572,9 +877,10 @@ exports.generateCompletion = generateCompletion;
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.initComments = exports.initPullRequest = exports.initIssue = exports.initAssistant = void 0;
+exports.initFileContent = exports.initReviewComment = exports.initComments = exports.initPullRequest = exports.initIssue = exports.initAssistant = void 0;
 const openai_1 = __nccwpck_require__(9211);
 const utils_1 = __nccwpck_require__(8483);
+const openai_2 = __nccwpck_require__(1933);
 const initAssistant = (name, handle) => {
     return [
         {
@@ -589,6 +895,7 @@ const initAssistant = (name, handle) => {
 };
 exports.initAssistant = initAssistant;
 const initIssue = (repo, issue) => {
+    var _a;
     return [
         {
             role: openai_1.ChatCompletionRequestMessageRoleEnum.System,
@@ -598,7 +905,7 @@ const initIssue = (repo, issue) => {
                 `Issue title: \`${issue.title}\``,
                 `Issue description:`,
                 '```',
-                issue.body,
+                (_a = issue.body) === null || _a === void 0 ? void 0 : _a.substring(0, openai_2.LLM_MAX_CHARS / 10),
                 '```',
             ].join('\n'),
         },
@@ -606,6 +913,7 @@ const initIssue = (repo, issue) => {
 };
 exports.initIssue = initIssue;
 const initPullRequest = (repo, issue, diff) => {
+    var _a;
     return [
         {
             role: openai_1.ChatCompletionRequestMessageRoleEnum.System,
@@ -615,7 +923,7 @@ const initPullRequest = (repo, issue, diff) => {
                 `Pull request title: \`${issue.title}\``,
                 `Pull request description:`,
                 '```',
-                issue.body,
+                (_a = issue.body) === null || _a === void 0 ? void 0 : _a.substring(0, openai_2.LLM_MAX_CHARS / 10),
                 '```',
             ].join('\n'),
         },
@@ -647,6 +955,28 @@ const initComments = (comments) => {
         ];
 };
 exports.initComments = initComments;
+const initReviewComment = (diff_hunk, review_comment) => {
+    return [
+        {
+            role: openai_1.ChatCompletionRequestMessageRoleEnum.System,
+            content: [`The diff hunk where the comment was made:`, '```', diff_hunk, '```'].join('\n'),
+        },
+        {
+            role: openai_1.ChatCompletionRequestMessageRoleEnum.User,
+            content: (0, utils_1.unescapeComment)(review_comment),
+        },
+    ];
+};
+exports.initReviewComment = initReviewComment;
+const initFileContent = (fileContent) => {
+    return [
+        {
+            role: openai_1.ChatCompletionRequestMessageRoleEnum.User,
+            content: fileContent,
+        },
+    ];
+};
+exports.initFileContent = initFileContent;
 
 
 /***/ }),
@@ -657,19 +987,19 @@ exports.initComments = initComments;
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.escapeUser = exports.unescapeComment = exports.escapeComment = exports.isCommentByAssistant = void 0;
+exports.removeTextOccurrence = exports.escapeUser = exports.unescapeComment = exports.escapeComment = exports.isCommentByAssistant = void 0;
 /**
  * The comment prefix and suffix are not rendered by GitHub.
  * They are used to identify comments that were generated by the assistant.
  * @see https://docs.github.com/en/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax#hiding-content-with-comments
  */
-const ASSISTANT_COMMENT_PREFIX = '<!-- AdaGPT -->';
-const ASSISTANT_COMMENT_SUFFIX = '<!-- /AdaGPT -->';
+const ASSISTANT_COMMENT_PREFIX = '<!-- rs-gpt-review -->';
+const ASSISTANT_COMMENT_SUFFIX = '<!-- /rs-gpt-review -->';
 /**
  * The comment link is rendered as a subscript by GitHub.
  */
-const ASSISTANT_ACTION_URL = 'https://github.com/zirkelc/AdaGPT';
-const ASSISTANT_COMMENT_LINK = `<sub>generated by [AdaGPT](${ASSISTANT_ACTION_URL})</sub>`;
+const ASSISTANT_ACTION_URL = 'https://github.com/rootstrap/rs-gpt-review';
+const ASSISTANT_COMMENT_LINK = `<sub>generated by [rs-gpt-review](${ASSISTANT_ACTION_URL})</sub>`;
 /**
  * Returns true if the comment was generated by the assistant.
  * Only the prefix is checked.
@@ -716,6 +1046,35 @@ const escapeUser = (user) => {
     return user.replace('[bot]', '').replace(/[^a-zA-Z0-9_-]/g, '');
 };
 exports.escapeUser = escapeUser;
+/**
+ * Remove ocurrence of a string based on a regex
+ * @param target
+ * @param search
+ */
+const removeTextOccurrence = (target, search) => {
+    const result = [];
+    const promptEraseItems = ['--model', '--prompt', '--exclude', '--include'];
+    // eslint-disable-next-line @typescript-eslint/prefer-for-of
+    for (let index = 0; index < target.length; index++) {
+        const element = target[index];
+        const found = search.find((e) => {
+            return element.content.includes(e);
+        });
+        if (found) {
+            if (promptEraseItems.includes(found)) {
+                const reg = `.*?(\\S+)`;
+                const regConcat = `${promptEraseItems.join(`${reg}|`)}${reg}`;
+                element.content = element.content.replace(new RegExp(regConcat, 'gsm'), '');
+                result.push(element);
+            }
+        }
+        else if (element.content.replace(/ /g, '') !== '@rs-gpt-review') {
+            result.push(element);
+        }
+    }
+    return result;
+};
+exports.removeTextOccurrence = removeTextOccurrence;
 
 
 /***/ }),

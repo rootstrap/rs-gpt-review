@@ -1,5 +1,5 @@
 import * as github from '@actions/github';
-import type { Issue, IssueComment } from '@octokit/webhooks-types';
+import type { Issue, IssueComment, PullRequestReviewComment } from '@octokit/webhooks-types';
 
 /**
  * Returns an issue or pull request for the given issue number.
@@ -72,4 +72,32 @@ export const addComment = async (github_token: string, issue_number: number, bod
   });
 
   return comment.data as IssueComment;
+};
+
+/**
+ * Adds a reply to a pull request review comment to the given pull request and review comment ID.
+ * @param github_token
+ * @param pull_number
+ * @param body
+ * @param review_id
+ * @returns
+ */
+export const addReviewCommentReply = async (
+  github_token: string,
+  pull_number: number,
+  body: string,
+  review_id: number,
+): Promise<PullRequestReviewComment> => {
+  const { owner, repo } = github.context.repo;
+  const octokit = github.getOctokit(github_token);
+
+  const comment = await octokit.rest.pulls.createReviewComment({
+    owner,
+    repo,
+    pull_number,
+    body,
+    in_reply_to: review_id,
+  });
+
+  return comment.data as PullRequestReviewComment;
 };

@@ -2,6 +2,7 @@ import type { Issue, IssueComment, PullRequest } from '@octokit/webhooks-types';
 import { ChatCompletionRequestMessage, ChatCompletionRequestMessageRoleEnum } from 'openai';
 import { Repo } from '../github/utils';
 import { escapeUser, isCommentByAssistant, unescapeComment } from './utils';
+import { LLM_MAX_CHARS } from './openai';
 
 export const initAssistant = (name: string, handle: string): ChatCompletionRequestMessage[] => {
   return [
@@ -26,7 +27,7 @@ export const initIssue = (repo: Repo, issue: Issue): ChatCompletionRequestMessag
         `Issue title: \`${issue.title}\``,
         `Issue description:`,
         '```',
-        issue.body,
+        issue.body?.substring(0, LLM_MAX_CHARS / 10), // limit the description to 1 tenth of LLM max characters
         '```',
       ].join('\n'),
     },
@@ -47,7 +48,7 @@ export const initPullRequest = (
         `Pull request title: \`${issue.title}\``,
         `Pull request description:`,
         '```',
-        issue.body,
+        issue.body?.substring(0, LLM_MAX_CHARS / 10), // limit the description to 1 tenth of LLM max characters
         '```',
       ].join('\n'),
     },
@@ -79,4 +80,26 @@ export const initComments = (comments: IssueComment[]): ChatCompletionRequestMes
               },
         ),
       ];
+};
+
+export const initReviewComment = (diff_hunk: string, review_comment: string): ChatCompletionRequestMessage[] => {
+  return [
+    {
+      role: ChatCompletionRequestMessageRoleEnum.System,
+      content: [`The diff hunk where the comment was made:`, '```', diff_hunk, '```'].join('\n'),
+    },
+    {
+      role: ChatCompletionRequestMessageRoleEnum.User,
+      content: unescapeComment(review_comment),
+    },
+  ];
+};
+
+export const initFileContent = (fileContent: string): ChatCompletionRequestMessage[] => {
+  return [
+    {
+      role: ChatCompletionRequestMessageRoleEnum.User,
+      content: fileContent,
+    },
+  ];
 };
