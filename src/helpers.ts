@@ -67,10 +67,7 @@ export const processCommands = (body: string, AVAILABLE_COMMANDS: string[]): Com
     return body?.includes(v);
   });
 
-  // eslint-disable-next-line @typescript-eslint/prefer-for-of
-  for (let index = 0; index < commands.length; index++) {
-    const command = commands[index];
-
+  for (const command of commands) {
     if (command === '--help' || command === '--prompts') {
       result.push({ command, value: null });
     } else if (command === '--model') {

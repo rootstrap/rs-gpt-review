@@ -109,9 +109,8 @@ export async function run(): Promise<void> {
           return;
         }
       } else {
-        // eslint-disable-next-line @typescript-eslint/prefer-for-of
-        for (let index = 0; index < commands.length; index++) {
-          const { command, value } = commands[index];
+        for (const element of commands) {
+          const { command, value } = element;
 
           if (command === '--model') {
             PARAMS.model = value ? value : LLM_PROPERTIES.model;
@@ -211,7 +210,6 @@ export async function run(): Promise<void> {
 
     debug('Prompt', { prompt });
 
-    // TODO handle max tokens limit
     // generate the completion from the prompt
     const completion = await generateCompletion(inputs.openai_key, {
       model: inputs.model ? inputs.model : PARAMS.model,
@@ -235,7 +233,9 @@ export async function run(): Promise<void> {
     // write a summary of the trigger and response to the job log
     writeSummary(issue, trigger, response, prompt);
   } catch (error) {
-    if (error instanceof Error) core.setFailed(error);
+    if (error instanceof Error) {
+      core.setFailed(error);
+    }
   }
 }
 

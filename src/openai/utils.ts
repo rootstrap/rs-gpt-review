@@ -42,10 +42,14 @@ export const escapeComment = (comment: string): string => {
  */
 export const unescapeComment = (comment: string): string => {
   const startIndex = comment.indexOf(ASSISTANT_COMMENT_PREFIX);
-  if (startIndex >= 0) comment = comment.substring(startIndex + ASSISTANT_COMMENT_PREFIX.length);
+  if (startIndex >= 0) {
+    comment = comment.substring(startIndex + ASSISTANT_COMMENT_PREFIX.length);
+  }
 
   const endIndex = comment.lastIndexOf(ASSISTANT_COMMENT_SUFFIX);
-  if (endIndex >= 0) comment = comment.substring(0, endIndex);
+  if (endIndex >= 0) {
+    comment = comment.substring(0, endIndex);
+  }
 
   return comment.trim();
 };
@@ -71,9 +75,7 @@ export const removeTextOccurrence = (
 ): ChatCompletionRequestMessage[] => {
   const result: ChatCompletionRequestMessage[] = [];
   const promptEraseItems = ['--model', '--prompt', '--exclude', '--include'];
-  // eslint-disable-next-line @typescript-eslint/prefer-for-of
-  for (let index = 0; index < target.length; index++) {
-    const element = target[index];
+  for (const element of target) {
     const found = search.find((e) => {
       return element.content.includes(e);
     });

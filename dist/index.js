@@ -185,8 +185,9 @@ const getPullRequestDiff = (github_token, issue_number) => __awaiter(void 0, voi
         },
     });
     // Shouldn't happen, just to satisfy TypeScript
-    if (typeof diff !== 'string')
+    if (typeof diff !== 'string') {
         throw new Error('Diff is not a string');
+    }
     return diff;
 });
 exports.getPullRequestDiff = getPullRequestDiff;
@@ -392,8 +393,9 @@ exports.writeSummary = writeSummary;
  */
 const debug = (message, obj) => {
     core.debug(message);
-    if (obj !== undefined)
+    if (obj !== undefined) {
         core.debug(JSON.stringify(obj, null, 2));
+    }
 };
 exports.debug = debug;
 /**
@@ -499,9 +501,7 @@ const processCommands = (body, AVAILABLE_COMMANDS) => {
     const commands = AVAILABLE_COMMANDS.filter((v) => {
         return body === null || body === void 0 ? void 0 : body.includes(v);
     });
-    // eslint-disable-next-line @typescript-eslint/prefer-for-of
-    for (let index = 0; index < commands.length; index++) {
-        const command = commands[index];
+    for (const command of commands) {
         if (command === '--help' || command === '--prompts') {
             result.push({ command, value: null });
         }
@@ -658,9 +658,8 @@ function run() {
                     }
                 }
                 else {
-                    // eslint-disable-next-line @typescript-eslint/prefer-for-of
-                    for (let index = 0; index < commands.length; index++) {
-                        const { command, value } = commands[index];
+                    for (const element of commands) {
+                        const { command, value } = element;
                         if (command === '--model') {
                             PARAMS.model = value ? value : openai_1.LLM_PROPERTIES.model;
                         }
@@ -740,7 +739,6 @@ function run() {
                 prompt.push(...(0, prompts_1.initFileContent)(INCLUDE_FILES.toString()));
             }
             (0, utils_1.debug)('Prompt', { prompt });
-            // TODO handle max tokens limit
             // generate the completion from the prompt
             const completion = yield (0, openai_1.generateCompletion)(inputs.openai_key, {
                 model: inputs.model ? inputs.model : PARAMS.model,
@@ -764,8 +762,9 @@ function run() {
             (0, utils_1.writeSummary)(issue, trigger, response, prompt);
         }
         catch (error) {
-            if (error instanceof Error)
+            if (error instanceof Error) {
                 core.setFailed(error);
+            }
         }
     });
 }
@@ -1028,11 +1027,13 @@ exports.escapeComment = escapeComment;
  */
 const unescapeComment = (comment) => {
     const startIndex = comment.indexOf(ASSISTANT_COMMENT_PREFIX);
-    if (startIndex >= 0)
+    if (startIndex >= 0) {
         comment = comment.substring(startIndex + ASSISTANT_COMMENT_PREFIX.length);
+    }
     const endIndex = comment.lastIndexOf(ASSISTANT_COMMENT_SUFFIX);
-    if (endIndex >= 0)
+    if (endIndex >= 0) {
         comment = comment.substring(0, endIndex);
+    }
     return comment.trim();
 };
 exports.unescapeComment = unescapeComment;
@@ -1054,9 +1055,7 @@ exports.escapeUser = escapeUser;
 const removeTextOccurrence = (target, search) => {
     const result = [];
     const promptEraseItems = ['--model', '--prompt', '--exclude', '--include'];
-    // eslint-disable-next-line @typescript-eslint/prefer-for-of
-    for (let index = 0; index < target.length; index++) {
-        const element = target[index];
+    for (const element of target) {
         const found = search.find((e) => {
             return element.content.includes(e);
         });
