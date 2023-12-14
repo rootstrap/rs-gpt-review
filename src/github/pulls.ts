@@ -20,7 +20,9 @@ export const getPullRequestDiff = async (github_token: string, issue_number: num
   });
 
   // Shouldn't happen, just to satisfy TypeScript
-  if (typeof diff !== 'string') throw new Error('Diff is not a string');
+  if (typeof diff !== 'string') {
+    throw new Error('Diff is not a string');
+  }
 
   return diff;
 };

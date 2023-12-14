@@ -184,7 +184,9 @@ export const writeSummary = async (
  */
 export const debug = (message: string, obj?: Record<string, unknown>): void => {
   core.debug(message);
-  if (obj !== undefined) core.debug(JSON.stringify(obj, null, 2));
+  if (obj !== undefined) {
+    core.debug(JSON.stringify(obj, null, 2));
+  }
 };
 
 /**
