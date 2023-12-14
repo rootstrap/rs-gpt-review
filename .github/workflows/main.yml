@@ -28,7 +28,7 @@ jobs:
     if: ${{ github.event_name == 'issues' && contains(github.event.issue.body, '@rs-gpt-review') }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: ./
         name: rs-gpt-review
         with:
@@ -42,7 +42,7 @@ jobs:
     if: ${{ github.event_name == 'issue_comment' && !github.event.issue.pull_request && contains(github.event.comment.body, '@rs-gpt-review') }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: ./
         name: rs-gpt-review
         with:
@@ -56,7 +56,7 @@ jobs:
     if: ${{ github.event_name == 'pull_request' && contains(github.event.pull_request.body, '@rs-gpt-review') }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: ./
         name: rs-gpt-review
         with:
@@ -70,7 +70,7 @@ jobs:
     if: ${{ github.event_name == 'issue_comment' && github.event.issue.pull_request && contains(github.event.comment.body, '@rs-gpt-review') }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: ./
         name: rs-gpt-review
         with:
