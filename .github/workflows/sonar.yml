@@ -36,7 +36,7 @@ jobs:
         run: npm run test-coverage
 
       - name: Setup sonar scanner
-        uses: warchant/setup-sonar-scanner@v5
+        uses: warchant/setup-sonar-scanner@v8
 
       - name: Run Sonarqube analysis
         run: |
