@@ -2,7 +2,7 @@
 
 # rs-gpt-review GitHub Action
 
-rs-gpt-review is an AI-powered GitHub Action that generates helpful responses to comments on issues and pull requests. It's like having a conversation with `GPT-4`, but without actually leaving GitHub and available to everyone in Rootstrap.
+rs-gpt-review is an AI-powered GitHub Action that generates helpful responses to comments on issues and pull requests. It's like having a conversation with `GPT-4`, but without actually leaving GitHub.
 
 ## Getting Started
 
