@@ -43,7 +43,7 @@
     "openai": "^3.2.1"
   },
   "devDependencies": {
-    "@octokit/webhooks-types": "^6.11.0",
+    "@octokit/webhooks-types": "^7.4.0",
     "@types/jest": "^29.5.2",
     "@types/node": "^18.15.13",
     "@typescript-eslint/parser": "^5.60.1",
